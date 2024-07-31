@@ -1,10 +1,17 @@
 import pandas as pd
 import os
-from simplegmail import Gmail
-import base64
+import smtplib
+from email.mime.multipart import MIMEMultipart
+from email.mime.text import MIMEText
+from email.mime.base import MIMEBase
+from email import encoders
+from email.mime.image import MIMEImage
 
-# Initialize Gmail client
-gmail = Gmail()
+
+# Email account credentials
+EMAIL_ADDRESS = 'lssmctpe@gmail.com'
+EMAIL_PASSWORD = ''
+
 
 # Path to the Excel file
 excel_path = r"C:\Users\lin\Documents\program\toss\Landseed\0614moti 結果\25人_參與者名單(完成) - 排序.xlsx"
@@ -25,14 +32,47 @@ local_image_path = r"C:\Users\lin\Documents\program\toss\Landseed\LINE group.jpg
 def format_name(name):
     return name.replace(" ", "")  # Remove spaces from names
 
-# Function to read and convert image to base64
-def image_to_base64(image_path):
-    with open(image_path, 'rb') as img_file:
-        return base64.b64encode(img_file.read()).decode('utf-8')
+# Function to send email
+def send_email(to_address, pdf_path):
+    # Create the email
+    msg = MIMEMultipart('related')
+    msg['From'] = EMAIL_ADDRESS
+    msg['To'] = to_address
+    msg['BCC'] = 'archilin1@gmail.com'  # Add BCC field
+    msg['Subject'] = "聯新企業健檢報告"
 
-# Convert image to base64
-image_base64 = image_to_base64(local_image_path)
-img_tag = f'<img src="data:image/png;base64,{image_base64}" alt="Line Group" style="width:200px;height:auto;">'
+    # Create the body of the email
+    msg_html = f'''
+    <p>您好，</p>
+    <p>這是上週您參加聯新運醫AI 3D姿態檢測，<br>
+    依據您的檢測結果，為您設計最需處理的3項運動。</p>
+    <p>請參考您的運動處方建議，如有任何問題，歡迎您先加入Line官方帳號，並利用line詢問我們!!</p>
+    <p><img src="cid:image1" alt="Line Group" style="width:200px;height:auto;"></p>
+    <p>敬祝您身體常保健康</p>
+    <p>聯新運醫<br>
+    企業健康促進小組<br>
+    02-27216698</p>
+    '''
+    msg.attach(MIMEText(msg_html, 'html'))
+
+    # Attach the image
+    with open(local_image_path, 'rb') as img_file:
+        img = MIMEImage(img_file.read())
+        img.add_header('Content-ID', '<image1>')
+        msg.attach(img)
+
+    # Attach the PDF
+    with open(pdf_path, 'rb') as attachment:
+        part = MIMEBase('application', 'octet-stream')
+        part.set_payload(attachment.read())
+        encoders.encode_base64(part)
+        part.add_header('Content-Disposition', 'attachment', filename=os.path.basename(pdf_path))
+        msg.attach(part)
+
+    # Send the email
+    with smtplib.SMTP_SSL('smtp.gmail.com', 465) as server:
+        server.login(EMAIL_ADDRESS, EMAIL_PASSWORD)
+        server.sendmail(EMAIL_ADDRESS, [to_address, 'archilin1@gmail.com'], msg.as_string())
 
 # Traverse all PDF files
 for filename in os.listdir(pdf_folder):
@@ -46,25 +86,8 @@ for filename in os.listdir(pdf_folder):
         if email:
             full_path = os.path.join(pdf_folder, filename)
             try:
-                # Build and send the email
-                gmail.send_message(
-                    sender="archilin1@gmail.com",
-                    to=email,
-                    bcc=["archilin1@gmail.com", "lssmctpe@gmail.com"],  # BCC to self for a copy
-                    subject="聯新企業健檢報告",
-                    msg_html=f'''
-                    <p>您好，</p>
-                    <p>這是上週您參加聯新運醫AI 3D姿態檢測，<br>
-                    依據您的檢測結果，為您設計最需處理的3項運動。</p>
-                    <p>請參考您的運動處方建議，如有任何問題，歡迎您先加入Line官方帳號，並利用line詢問我們!!</p>
-                    {img_tag}
-                    <p>敬祝您身體常保健康</p>
-                    <p>聯新運醫<br>
-                    企業健康促進小組<br>
-                    02-27216698</p>
-                    ''',
-                    attachments=[full_path]  # Attach the PDF
-                )
+                # Send the email
+                send_email(email, full_path)
                 print(f"Email successfully sent to {email}")
             except Exception as e:
                 print(f"Failed to send email to {email}: {e}")
