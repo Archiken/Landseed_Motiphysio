@@ -9,7 +9,6 @@ from openpyxl.utils import get_column_letter, column_index_from_string
 
 # 设置OCR模型
 ocr_model = PaddleOCR(lang='en', use_angle_cls=True)
-
 def process_attachments_to_excel(date):
     # 此處添加你處理附件到Excel的程式碼
     # 定义要提取的区域坐标
@@ -62,36 +61,53 @@ def process_attachments_to_excel(date):
         if 'img_path1' in paths and 'img_path2' in paths:
             img_path1 = paths['img_path1']
             img_path2 = paths['img_path2']
+        try: 
+            
+            original_img1 = cv2.imdecode(np.fromfile(img_path1, dtype=np.uint8), cv2.IMREAD_COLOR)
+            original_img2 = cv2.imdecode(np.fromfile(img_path2, dtype=np.uint8), cv2.IMREAD_COLOR)
 
-        original_img1 = cv2.imdecode(np.fromfile(img_path1, dtype=np.uint8), cv2.IMREAD_COLOR)
-        original_img2 = cv2.imdecode(np.fromfile(img_path2, dtype=np.uint8), cv2.IMREAD_COLOR)
+            region_texts1 = {}
+            region_texts2 = {}
 
-        region_texts1 = {}
-        region_texts2 = {}
+            for region_name, ((x_start, y_start), (x_end, y_end)) in regions1.items():
+                cropped_img = original_img1[y_start:y_end, x_start:x_end]
+                result = ocr_model.ocr(cropped_img)
+                collected_text = [element[1][0] for line in result for element in line]
+                full_text = " ".join(collected_text)
+                region_texts1[region_name] = full_text
 
-        for region_name, ((x_start, y_start), (x_end, y_end)) in regions1.items():
-            cropped_img = original_img1[y_start:y_end, x_start:x_end]
-            result = ocr_model.ocr(cropped_img)
-            collected_text = [element[1][0] for line in result for element in line]
-            full_text = " ".join(collected_text)
-            region_texts1[region_name] = full_text
+            for i in range(1, 3):
+                region_key = f"region_{i}"
+                if region_key not in region_texts1:
+                    region_texts1[region_key] = ""
 
-        for i in range(1, 3):
-            region_key = f"region_{i}"
-            if region_key not in region_texts1:
-                region_texts1[region_key] = ""
+            for region_name, ((x_start, y_start), (x_end, y_end)) in regions2.items():
+                cropped_img = original_img2[y_start:y_end, x_start:x_end]
+                result = ocr_model.ocr(cropped_img)
 
-        for region_name, ((x_start, y_start), (x_end, y_end)) in regions2.items():
-            cropped_img = original_img2[y_start:y_end, x_start:x_end]
-            result = ocr_model.ocr(cropped_img)
-            collected_text = [element[1][0] for line in result for element in line]
-            full_text = " ".join(collected_text)
-            region_texts2[region_name] = full_text
+                # 新增檢查
+                if result is None or len(result) == 0:
+                    full_text = "0%"
+                else:
+                    # 添加調試信息來查看result的結構
+                    print(f"OCR result for {region_name} in img2: {result}")
+                    try:
+                        collected_text = [element[1][0] for line in result for element in line]
+                        full_text = " ".join(collected_text)
+                    except Exception as e:
+                        print(f"Error collecting text for {region_name} in img2: {e}")
+                        full_text = "0%"  # 使用默認值或根據需求設置
 
-        for i in range(1, 21):
-            region_key = f"region_{i}"
-            if region_key not in region_texts2:
-                region_texts2[region_key] = ""
+                region_texts2[region_name] = full_text
+
+            for i in range(1, 21):
+                region_key = f"region_{i}"
+                if region_key not in region_texts2:
+                    region_texts2[region_key] = "0%"
+
+        except Exception as e:
+            print(f"Error processing file {base_name}: {e}")
+            
 
         name = base_name
         region_descriptions = {}
